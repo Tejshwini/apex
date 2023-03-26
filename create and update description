@@ -1,0 +1,144 @@
+trigger on ticket:
+
+trigger Concerttrigger on ticket__c (after insert) {
+if(trigger.isafter &&trigger.isinsert){
+   Concerttrigger_handler.method1(trigger.new);
+}
+}
+handler:
+public class Concerttrigger_handler {
+    public static void method1(list<ticket__c> newlist){
+        try{
+            set<id> ticketid=new set<id>();
+        for(ticket__c obj:newlist){
+            ticketid.add(obj.Id);
+        }
+        list<ticket__c> ticketlist=[Select id,CreatedById,Concert__c,Concert__r.name,Concert__r.CreatedById,Concert__r.Date__c,
+                                    	Concert__r.Venue__c,customer__c,customer__r.name,customer__r.firstname,customer__r.lastname,Concert__r.Artist__c from ticket__c];
+        list<event> eventlist=new list<event>();
+        for(ticket__c ticket:ticketlist){
+            
+            Event event = new Event();
+            event.WhoId=ticket.customer__c;
+            event.WhatId=ticket.Concert__c;
+            event.OwnerId=ticket.CreatedById;
+            event.Subject=ticket.Concert__r.name;
+            event.StartDateTime=ticket.Concert__r.Date__c;
+            event.EndDateTime=ticket.Concert__r.Date__c.addHours(2);
+            event.ActivityDateTime = ticket.Concert__r.Date__c;
+            event.Description='Hi'+' '+ticket.customer__r.firstname+' '+ticket.customer__r.lastname+' '+'You have event on '+' '+ticket.Concert__r.Date__c+' '+' event name'+' '+ticket.Concert__r.name+'At'
+                +' '+ticket.Concert__r.Venue__c;
+            eventlist.add(event);
+        }
+        
+        if( eventlist!=null){
+           database.insert(eventlist,false); 
+            system.debug('  event'+eventlist[0].Id);
+        }
+        }
+        
+        catch(exception error){
+            system.debug('error'+error.getMessage()+error.getLineNumber());
+        }
+       
+    }
+}
+
+trigger on contact update:
+trigger Concerttriggercontact on Contact (after update) {
+    if(trigger.isafter && trigger.isupdate){
+        for(Contact cobj:trigger.new){
+            if((cobj.firstname!=trigger.oldmap.get(cobj.id).firstname)||(cobj.lastname!=trigger.oldmap.get(cobj.id).lastname)){
+                    Concerttriggercontact_handler.updateevent(trigger.new,trigger.oldmap,trigger.newmap);
+            } 
+        }
+        
+    }
+}
+
+handler:
+public class Concerttriggercontact_handler {
+    public static void updateevent(list<Contact> newlist,map<id,contact> oldmap,map<id,contact> newmap){
+        try{
+           map<id,Contact> conmap=new map<id,Contact>();
+            id customer=[SELECT  Id,name FROM RecordType  where  RecordType.name ='Customer'].id;
+            if(customer!=null){
+               for(Contact cobj:newlist){
+            if(cobj.RecordTypeId==customer){
+                system.debug('customer recordtype'+cobj.RecordTypeId );
+                conmap.put(cobj.id,cobj);
+            } 
+            }
+        
+            
+        }
+         list<event> eventoncon=[SELECT Id, WhatId,Description, Subject, ActivityDate, StartDateTime,  Who.Id,who.name, Who.LastName, Who.Email, Who.Type
+                                , Owner.Id, Owner.LastName, Owner.Email
+                                FROM Event where WhoId =:conmap.keyset()];
+        system.debug('eventoncon'+eventoncon);
+        list<event> eventlist=new list<event>();
+        for( event e:eventoncon){
+            string text=e.Description;
+            string result=text.replace(oldmap.get( e.Who.Id).firstname+' '+oldmap.get( e.Who.Id).lastname, newmap.get( e.Who.Id).firstname+' '+newmap.get( e.Who.Id).lastname);
+            e.Description=result;
+            eventlist.add(e);
+        }
+         if(eventlist!=null){
+            database.update(eventlist);
+            system.debug('eventlist'+eventlist);
+        } 
+        }
+        catch(exception error){
+            system.debug('error'+error.getMessage()+error.getLineNumber());
+        }
+    }
+}
+
+concert trigger:
+trigger concerttriggeronconcert on Concert__c (after update) {
+    if(trigger.isafter && trigger.isupdate){
+        for(Concert__c cobj:trigger.new){
+            if((cobj.Venue__c!=trigger.oldmap.get(cobj.id).Venue__c)
+               ||(cobj.Name!=trigger.oldmap.get(cobj.id).Name)||(cobj.Date__c!=trigger.oldmap.get(cobj.id).Date__c)){
+                concerttriggeronconcert_handler.updateconcert(trigger.new,trigger.oldmap,trigger.newmap);
+            } 
+        }
+    }
+}
+handler:
+public class concerttriggeronconcert_handler {
+    public static void updateconcert(list<Concert__c> newlist,map<id,concert__c> oldmap,map<id,concert__c>newmap){
+        try{
+           set<id> concert=new set<id>();
+        for(Concert__c con:newlist){
+            concert.add(con.id);
+        }
+       list<event> eventoncon=[SELECT Id, WhatId,Description, Subject, ActivityDate, StartDateTime,  What.Id,What.name,
+                                 Owner.Id, Owner.LastName, Owner.Email
+                                FROM Event where WhatId =:concert  ];
+            system.debug('eventoncon'+eventoncon);
+            list<event> eventlist=new list<event>();
+        for(event e:eventoncon){
+            string dateold=string.valueOfGmt(oldmap.get(e.WhatId).Date__c);
+            string dateonew=string.valueOfGmt(newmap.get(e.WhatId).Date__c); 
+            if(e.Description!=null){
+              string text=e.Description;
+            string result=text.replace(oldmap.get(e.WhatId).Venue__c, newmap.get(e.WhatId).Venue__c);
+            result=result.replace(oldmap.get(e.WhatId).Name, newmap.get(e.WhatId).Name);
+              result=result.replace(dateold,dateonew);
+            
+            e.Description=result;
+            eventlist.add(e);
+            }  
+            }
+          if(eventlist!=null){
+            database.update(eventlist);
+            system.debug('eventlist'+eventlist);
+        }
+            
+        }  
+    catch(exception error){
+            system.debug('error'+error.getMessage()+error.getLineNumber());
+        }
+    }
+}
